@@ -2,6 +2,8 @@ import os
 import sys
 import time
 import requests
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from datetime import datetime, timezone
 
 PUBLIC_INFO_URL = "https://api.hyperliquid.xyz/info"
@@ -94,25 +96,36 @@ def render_telemetry(capital_amount, mode="AGGRESSIVE (3.50x Leverage)"):
     print("-" * 88)
     print(f"  [13:28:34] [SYS] | Matrix initialized with ${capital_amount:,.2f} USDC across multi-venue infrastructure.")
     print("=" * 88)
-    print("\n[*] Engine live. Refreshing tape & EVM state in 10s... (Ctrl+C to abort)")
+    print("\n[*] Engine live. Refreshing tape & EVM state in 10s...")
 
 def prompt_capital():
     if not sys.stdin.isatty():
         return float(os.getenv("PORTFOLIO_CAPITAL", 100000.0))
-    print("\n============================================================")
-    print(" CONTRAVARIANT LABS | UNROLLED QUANT MATRIX")
-    print("============================================================")
     try:
-        val = input(" Enter Portfolio Capital Amount (USDC) [Default 100000]: ").strip().replace(',', '')
+        val = input("\n Enter Portfolio Capital Amount (USDC) [Default 100000]: ").strip().replace(',', '')
         return float(val) if val else 100000.0
     except Exception:
         return 100000.0
 
+class DummyServer(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"Telemetry Active")
+
+def run_dummy_server():
+    port = int(os.environ.get("PORT", 10000))
+    server = HTTPServer(("0.0.0.0", port), DummyServer)
+    server.serve_forever()
+
 if __name__ == "__main__":
+    # Start the dummy web server to pass Render's port health checks
+    threading.Thread(target=run_dummy_server, daemon=True).start()
+    
     capital = prompt_capital()
     try:
         while True:
             render_telemetry(capital)
             time.sleep(10)
-        except KeyboardInterrupt:
-            print("\n[!] Engine telemetry paused.")
+    except KeyboardInterrupt:
+        print("\n[!] Engine telemetry paused.")
